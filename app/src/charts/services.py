@@ -18,7 +18,10 @@ async def get_history(
     next_time = 0
 
     try:
-        instrument = await instrument_services.get_saved_instrument(db, ticker)
+        exchange, symbol = instrument_services.split_ticker(ticker)
+        instrument = await instrument_services.get_saved_instrument(
+            db, symbol, exchange
+        )
         bar_set = await bar_services.get_bar_set(db, instrument, Timeframe(timeframe))
 
         start = datetime.fromtimestamp(from_t, pytz.utc)
@@ -52,7 +55,10 @@ async def get_info(db: DB, ticker: str) -> Info:
     info = Info(name=ticker, ticker=ticker)
 
     try:
-        instrument = await instrument_services.get_saved_instrument(db, ticker)
+        exchange, symbol = instrument_services.split_ticker(ticker)
+        instrument = await instrument_services.get_saved_instrument(
+            db, symbol, exchange
+        )
         instrument_type = _instrument_type_to_chart(instrument.type)
         timezone, session = _exchange_schedule_to_chart(instrument.exchange)
         price_scale = 10 ** abs(instrument.tick_size.normalize().as_tuple().exponent)

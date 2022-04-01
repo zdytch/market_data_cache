@@ -1,7 +1,7 @@
 from instruments.models import Instrument, TradingSession
 from common.schemas import Interval
 from config.db import DB
-from ib.connector import ib_connector
+from ib.connector import ibc
 from datetime import datetime
 import pytz
 from . import trading_session_crud
@@ -13,9 +13,7 @@ async def get_nearest_trading_session(db: DB, instrument: Instrument) -> Trading
     )
 
     if not is_session_up_to_date(trading_session):
-        info = await ib_connector.get_instrument_info(
-            instrument.symbol, instrument.exchange
-        )
+        info = await ibc.get_instrument_info(instrument.symbol, instrument.exchange)
         trading_session.start = info.nearest_session.start
         trading_session.end = info.nearest_session.end
 
@@ -30,10 +28,7 @@ async def is_overlap_open_session(
     trading_session = await get_nearest_trading_session(db, instrument)
 
     return (
-        (
-            interval.start >= trading_session.start
-            and interval.end < trading_session.end
-        )
+        (interval.start >= trading_session.start and interval.end < trading_session.end)
         or interval.start < trading_session.start < interval.end
         or interval.start < trading_session.end < interval.end
     )

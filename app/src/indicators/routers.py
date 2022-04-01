@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from config.db import DB, get_db
 from .schemas import IndicatorGet
 from . import services
+from instruments import services as instrument_services
 
 indicator_router = APIRouter(tags=['Indicators'])
 
@@ -13,7 +14,8 @@ async def get_indicator(
     db: DB = Depends(get_db),
 ):
     try:
-        return await services.get_indicator(db, ticker, length)
+        exchange, symbol = instrument_services.split_ticker(ticker)
+        return await services.get_indicator(db, symbol, exchange, length)
 
     except:  # TODO: catch business exception
         raise HTTPException(

@@ -1,6 +1,7 @@
 from indicators.models import Indicator
 from bars.models import Timeframe, Bar
 from config.db import DB
+from instruments.models import Exchange
 from instruments import services as instrument_services
 from bars import services as bar_services
 from common.schemas import Interval
@@ -11,8 +12,10 @@ import pytz
 from . import indicator_crud
 
 
-async def get_indicator(db: DB, ticker: str, length: int) -> Indicator:
-    instrument = await instrument_services.get_saved_instrument(db, ticker)
+async def get_indicator(
+    db: DB, symbol: str, exchange: Exchange, length: int
+) -> Indicator:
+    instrument = await instrument_services.get_saved_instrument(db, symbol, exchange)
     bar_set = await bar_services.get_bar_set(db, instrument, Timeframe.DAY)
     indicator = await indicator_crud.get_or_create_indicator(
         db, bar_set=bar_set, length=length

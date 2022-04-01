@@ -19,6 +19,9 @@ BACKEND_CORS_ORIGINS = [
     'http://localhost:3000',
 ]
 
+TELEGRAM_TOKEN = os.environ['APP_TELEGRAM_TOKEN']
+TELEGRAM_CHAT_ID = os.environ['APP_TELEGRAM_CHAT_ID']
+
 logger.add(
     'logs/mdc_{time}.log',
     format='{time} {level} {message}',

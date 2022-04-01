@@ -4,6 +4,7 @@ uvicorn
 sqlmodel
 asyncpg
 ib_insync
+httpx
 loguru
 pytz
 debugpy

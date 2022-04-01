@@ -2,7 +2,7 @@ from bars.models import BarSet, Bar
 from common.schemas import Interval
 from config.db import DB
 from instruments import services as instrument_services
-from ib.connector import ib_connector
+from ib.connector import ibc
 from datetime import timedelta
 from loguru import logger
 from . import bar_crud, bar_interval_crud, bar_interval_logic
@@ -57,7 +57,7 @@ async def get_historical_bars(db: DB, bar_set: BarSet, interval: Interval) -> li
 
 
 async def _get_bars_from_origin(bar_set: BarSet, interval: Interval) -> list[Bar]:
-    bars = await ib_connector.get_historical_bars(bar_set, interval)
+    bars = await ibc.get_historical_bars(bar_set, interval)
     instrument = bar_set.instrument
 
     if bars:

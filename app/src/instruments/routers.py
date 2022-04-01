@@ -22,7 +22,9 @@ async def get_instrument_list(
 @instrument_router.get('/{ticker}', response_model=InstrumentGet)
 async def get_instrument(ticker: str, db: DB = Depends(get_db)):
     try:
-        return await services.get_saved_instrument(db, ticker)
+        exchange, symbol = services.split_ticker(ticker)
+        return await services.get_saved_instrument(db, symbol, exchange)
+
     except:  # TODO: catch business exception
         raise HTTPException(
             status_code=404,
@@ -33,7 +35,8 @@ async def get_instrument(ticker: str, db: DB = Depends(get_db)):
 @instrument_router.get('/{ticker}/session', response_model=SessionGet)
 async def get_trading_session(ticker: str, db: DB = Depends(get_db)):
     try:
-        instrument = await services.get_saved_instrument(db, ticker)
+        exchange, symbol = services.split_ticker(ticker)
+        instrument = await services.get_saved_instrument(db, symbol, exchange)
 
         return await services.get_nearest_trading_session(db, instrument)
 

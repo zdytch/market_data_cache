@@ -1,7 +1,8 @@
-from ib_insync import IB, Contract
+from typing import Callable, Awaitable
+from ib_insync import IB, Contract, RealTimeBarList
 from instruments.models import Exchange, InstrumentType
 from bars.models import Bar, BarSet
-from .schemas import InstrumentInfo
+from .schemas import InstrumentInfo, BarInfo
 from common.schemas import Interval
 from decimal import Decimal
 from . import utils
@@ -13,15 +14,39 @@ class IBConnector:
     def __init__(self):
         self._ib = IB()
         self._ib.errorEvent += self._error_callback
+        self._ib.connectedEvent += self._connected_callback
+        self._ib.barUpdateEvent += self._realtime_bar_callback
 
     @property
     def is_connected(self) -> bool:
         return self._ib.isConnected()
 
+    async def connect(self, client_id=14):
+        if not self.is_connected:
+            try:
+                await self._ib.connectAsync('trixter-ib', 4002, client_id)
+
+            except Exception as error:
+                logger.error(error)
+
+    def disconnect(self):
+        if self.is_connected:
+            self._ib.disconnect()
+
+    def subscribe_callbacks(
+        self,
+        connected_callback: Callable[[], Awaitable] | None = None,
+        realtime_bar_callback: Callable[[BarInfo], Awaitable] | None = None,
+    ) -> None:
+        if connected_callback:
+            self.connected_callback = connected_callback
+        if realtime_bar_callback:
+            self.realtime_bar_callback = realtime_bar_callback
+
     async def get_instrument_info(
         self, symbol: str, exchange: Exchange
     ) -> InstrumentInfo:
-        await self._connect()
+        await self.connect()
 
         contract = self._get_contract(symbol, exchange)
         await self._ib.qualifyContractsAsync(contract)
@@ -62,7 +87,7 @@ class IBConnector:
         bar_set: BarSet,
         interval: Interval,
     ) -> list[Bar]:
-        await self._connect()
+        await self.connect()
 
         instrument = bar_set.instrument
         contract = self._get_contract(instrument.symbol, instrument.exchange)
@@ -101,7 +126,7 @@ class IBConnector:
         return bars
 
     async def search_instrument_info(self, symbol: str) -> list[InstrumentInfo]:
-        await self._connect()
+        await self.connect()
 
         results = []
         for type in tuple(InstrumentType):
@@ -125,9 +150,12 @@ class IBConnector:
 
         return results
 
-    async def _connect(self, client_id=14):
-        if not self.is_connected:
-            await self._ib.connectAsync('trixter-ib', 4002, client_id)
+    async def toggle_realtime_bars(self, symbol: str, exchange: Exchange, is_on: bool):
+        await self.connect()
+
+        if self.is_connected:
+            contract = self._get_contract(symbol, exchange)
+            self._toggle_realtime_bars(contract, is_on)
 
     def _get_contract(
         self,
@@ -159,10 +187,40 @@ class IBConnector:
             currency='USD',
         )
 
-    def _error_callback(
+    def _toggle_realtime_bars(self, contract: Contract, is_on: bool):
+        bar_list = self._get_realtime_bar_list(contract)
+        contract = bar_list.contract if bar_list else contract
+
+        if is_on:
+            use_rth = contract.secType == 'FUT'
+            self._ib.reqRealTimeBars(contract, 5, 'TRADES', use_rth)
+
+        elif not is_on and bar_list:
+            self._ib.cancelRealTimeBars(bar_list)
+
+    def _get_realtime_bar_list(self, contract: Contract) -> RealTimeBarList | None:
+        return next(
+            (
+                bar_list
+                for bar_list in self._ib.realtimeBars()
+                if contract.conId == bar_list.contract.conId
+                and isinstance(bar_list, RealTimeBarList)
+            ),
+            None,
+        )
+
+    async def _error_callback(
         self, req_id: int, error_code: int, error_string: str, contract: Contract
     ) -> None:
         logger.debug(f'{req_id} {error_code} {error_string} {contract}')
+
+        if error_code == 10225 and contract:
+            self._toggle_realtime_bars(contract, False)
+            self._toggle_realtime_bars(contract, True)
+
+    async def _connected_callback(self) -> None:
+        if hasattr(self, 'connected_callback'):
+            await self.connected_callback()
 
     def _get_special_case_translated_values(
         self,
@@ -198,5 +256,30 @@ class IBConnector:
 
         return tr_symbol, tr_multiplier, tr_tick_size, tr_description, is_contract_spec
 
+    async def _realtime_bar_callback(
+        self, bar_list: RealTimeBarList, has_new_bar: bool
+    ) -> None:
+        contract = bar_list.contract
+        last_bar = bar_list[-1]
+        exchange = (
+            contract.primaryExchange if contract.secType == 'STK' else contract.exchange
+        )
 
-ib_connector = IBConnector()
+        bar_info = BarInfo(
+            symbol=contract.symbol,
+            exchange=Exchange(exchange),
+            open=Decimal(str(last_bar.open_)),
+            high=Decimal(str(last_bar.high)),
+            low=Decimal(str(last_bar.low)),
+            close=Decimal(str(last_bar.close)),
+            volume=int(last_bar.volume),
+            timestamp=last_bar.time,
+        )
+
+        logger.debug(f'Realtime bar: {bar_info}')
+
+        if hasattr(self, 'realtime_bar_callback'):
+            await self.realtime_bar_callback(bar_info)
+
+
+ibc = IBConnector()
